@@ -26,7 +26,8 @@
 
   // 时间驱动常量（以像素/秒为单位）
   // 原先 ITEM_SPEED 大约为 1.8 px/frame @60fps -> 1.8*60 px/sec
-  const ITEM_SPEED_PPS = 1.8 * 60;    // 方块下落速度（px/sec）
+  // 下落速度改为原来的 2 倍
+  const ITEM_SPEED_PPS = 1.8 * 60 * 2;    // 方块下落速度（px/sec）
   const PLAYER_SPEED_PPS = 6 * 60;    // 玩家移动速度（原来 6 px/frame -> px/sec）
 
   // 生成间隔（秒）: 原来为 60 帧 ~= 1 秒
