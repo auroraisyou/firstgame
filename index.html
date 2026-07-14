@@ -24,18 +24,23 @@
   const ctx = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
 
-  // 可调常量：所有方块的统一下落速度（像素/帧）
-  const ITEM_SPEED = 1.8;
+  // 时间驱动常量（以像素/秒为单位）
+  // 原先 ITEM_SPEED 大约为 1.8 px/frame @60fps -> 1.8*60 px/sec
+  const ITEM_SPEED_PPS = 1.8 * 60;    // 方块下落速度（px/sec）
+  const PLAYER_SPEED_PPS = 6 * 60;    // 玩家移动速度（原来 6 px/frame -> px/sec）
+
+  // 生成间隔（秒）: 原来为 60 帧 ~= 1 秒
+  let spawnIntervalSec = 60 / 60; // 1.0s
+  let spawnTimerSec = 0;
 
   // 游戏状态
   let score = 0, lives = 3, paused = false, gameOver = false;
 
   // 玩家
-  const player = { x: W/2, y: H - 40, w: 80, h: 16, speed: 6 };
+  const player = { x: W/2, y: H - 40, w: 80, h: 16, speedPPS: PLAYER_SPEED_PPS };
 
   // 掉落物（现在同一时刻最多一个）
   const items = [];
-  let spawnTimer = 0, spawnInterval = 60; // 帧为单位
 
   // 输入
   const keys = {};
@@ -53,7 +58,6 @@
   }
 
   function handleTouchStart(e){
-    // 支持 touch 和 pointer 事件传入的一致结构
     e.preventDefault();
     const clientX = e.touches ? e.touches[0].clientX : (e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX));
     if (clientX == null) return;
@@ -76,55 +80,49 @@
     keys['arrowleft'] = false; keys['arrowright'] = false;
   }
 
-  // Touch events
   canvas.addEventListener('touchstart', handleTouchStart, {passive:false});
   canvas.addEventListener('touchmove', handleTouchMove, {passive:false});
   canvas.addEventListener('touchend', handleTouchEnd, {passive:false});
   canvas.addEventListener('touchcancel', handleTouchEnd, {passive:false});
-
-  // Pointer events (desktop and some mobile browsers)
   canvas.addEventListener('pointerdown', (e)=>{ handleTouchStart(e); });
   canvas.addEventListener('pointermove', (e)=>{ if (e.buttons) handleTouchMove(e); });
   canvas.addEventListener('pointerup', handleTouchEnd);
 
-  // --- 结束触摸/指针支持 ---
-
+  // --- 生成项 ---
   function spawnItem(){
-    // 仅当没有正在下落的方块时才生成新的方块（保证同一时刻只有一个）
-    if (items.length > 0) return;
-
+    if (items.length > 0) return; // 保证同一时刻只有一个下落物
     const size = 18 + Math.random()*14;
     items.push({
       x: Math.random() * (W - size),
       y: -size,
       w: size, h: size,
-      // 统一速度（所有方块相同）
-      vy: ITEM_SPEED
+      vy: ITEM_SPEED_PPS // px/sec
     });
   }
 
-  function update(){
+  // 更新时间驱动的 update（dt 单位：秒）
+  function update(dt){
     if (paused || gameOver) return;
 
-    // 玩家移动
-    if (keys['arrowleft'] || keys['a']) player.x -= player.speed;
-    if (keys['arrowright'] || keys['d']) player.x += player.speed;
+    // 玩家移动（基于时间）
+    if (keys['arrowleft'] || keys['a']) player.x -= player.speedPPS * dt;
+    if (keys['arrowright'] || keys['d']) player.x += player.speedPPS * dt;
     player.x = Math.max(0, Math.min(W - player.w, player.x));
 
-    // 生成掉落物（spawnInterval 控制生成频率）
-    spawnTimer++;
-    if (spawnTimer >= spawnInterval){
-      spawnTimer = 0;
+    // 生成掉落物（以秒计）
+    spawnTimerSec += dt;
+    if (spawnTimerSec >= spawnIntervalSec){
+      spawnTimerSec = 0;
       spawnItem();
-      // 难度随分数略增（保留原逻辑）
-      if (spawnInterval > 20 && score % 5 === 0) spawnInterval = Math.max(20, spawnInterval - 2);
+      // 难度随分数略增（将原帧数逻辑转换为秒）
+      if (spawnIntervalSec > 20/60 && score % 5 === 0) spawnIntervalSec = Math.max(20/60, spawnIntervalSec - 2/60);
     }
 
-    // 更新掉落物
+    // 更新掉落物（vy 以 px/sec，乘以 dt 得到本帧位移）
     for (let i = items.length - 1; i >= 0; i--){
       const it = items[i];
-      it.y += it.vy;
-      // 碰撞检测（轴对齐包围盒）
+      it.y += it.vy * dt;
+      // 碰撞检测
       if (it.y + it.h >= player.y && it.x < player.x + player.w && it.x + it.w > player.x){
         score += 1;
         items.splice(i,1);
@@ -142,7 +140,6 @@
   }
 
   function draw(){
-    // 背景
     ctx.clearRect(0,0,W,H);
     // 地面线
     ctx.fillStyle = '#071022';
@@ -177,22 +174,27 @@
     }
   }
 
-  function loop(){
-    update();
+  // 主循环：用时间戳计算 delta time，保持在不同设备上一致
+  let lastTimestamp = performance.now();
+  function loop(timestamp){
+    const dt = Math.min((timestamp - lastTimestamp) / 1000, 0.05); // 秒，最大 50ms 避免跳跃
+    lastTimestamp = timestamp;
+    update(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
   function resetGame(){
     score = 0; lives = 3; paused = false; gameOver = false;
-    items.length = 0; spawnTimer = 0; spawnInterval = 60;
+    items.length = 0; spawnTimerSec = 0; spawnIntervalSec = 60/60;
     player.x = W/2;
     document.getElementById('score').textContent = '分数: ' + score;
     document.getElementById('lives').textContent = '生命: ' + lives;
   }
 
   // 启动
-  loop();
+  lastTimestamp = performance.now();
+  requestAnimationFrame(loop);
   </script>
 </body>
 </html>
