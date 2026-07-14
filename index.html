@@ -2,10 +2,11 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>接住掉落物 — 简单小游戏</title>
   <style>
     body { margin:0; font-family: sans-serif; display:flex; height:100vh; align-items:center; justify-content:center; background:#222; color:#fff; }
-    canvas { background:#0b1220; display:block; border:4px solid #333; }
+    canvas { background:#0b1220; display:block; border:4px solid #333; width:100%; max-width:480px; height:auto; touch-action:none; }
     #ui { position:absolute; top:12px; left:12px; }
     .hint { font-size:14px; color:#ccc; }
   </style>
@@ -14,7 +15,7 @@
   <div id="ui">
     <div id="score">分数: 0</div>
     <div id="lives">生命: 3</div>
-    <div class="hint">← → 或 A D 控制移动，空格暂停/继续，R 重玩</div>
+    <div class="hint">← → 或 A D 控制移动；触摸屏幕左/右半边可移动；空格暂停/继续，R 重玩</div>
   </div>
   <canvas id="game" width="480" height="640"></canvas>
 
@@ -44,6 +45,49 @@
     if (e.key.toLowerCase() === 'r' && gameOver) resetGame();
   });
   window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+  // --- 触摸 / 指针 支持（适配手机） ---
+  function getCanvasRelativeX(clientX){
+    const rect = canvas.getBoundingClientRect();
+    return clientX - rect.left;
+  }
+
+  function handleTouchStart(e){
+    // 支持 touch 和 pointer 事件传入的一致结构
+    e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : (e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX));
+    if (clientX == null) return;
+    const x = getCanvasRelativeX(clientX);
+    const rect = canvas.getBoundingClientRect();
+    if (x < rect.width/2){ keys['arrowleft'] = true; keys['arrowright'] = false; }
+    else { keys['arrowright'] = true; keys['arrowleft'] = false; }
+  }
+  function handleTouchMove(e){
+    e.preventDefault();
+    const clientX = e.touches ? e.touches[0].clientX : (e.clientX || (e.touches && e.touches[0] && e.touches[0].clientX));
+    if (clientX == null) return;
+    const x = getCanvasRelativeX(clientX);
+    const rect = canvas.getBoundingClientRect();
+    if (x < rect.width/2){ keys['arrowleft'] = true; keys['arrowright'] = false; }
+    else { keys['arrowright'] = true; keys['arrowleft'] = false; }
+  }
+  function handleTouchEnd(e){
+    e.preventDefault();
+    keys['arrowleft'] = false; keys['arrowright'] = false;
+  }
+
+  // Touch events
+  canvas.addEventListener('touchstart', handleTouchStart, {passive:false});
+  canvas.addEventListener('touchmove', handleTouchMove, {passive:false});
+  canvas.addEventListener('touchend', handleTouchEnd, {passive:false});
+  canvas.addEventListener('touchcancel', handleTouchEnd, {passive:false});
+
+  // Pointer events (desktop and some mobile browsers)
+  canvas.addEventListener('pointerdown', (e)=>{ handleTouchStart(e); });
+  canvas.addEventListener('pointermove', (e)=>{ if (e.buttons) handleTouchMove(e); });
+  canvas.addEventListener('pointerup', handleTouchEnd);
+
+  // --- 结束触摸/指针支持 ---
 
   function spawnItem(){
     // 仅当没有正在下落的方块时才生成新的方块（保证同一时刻只有一个）
